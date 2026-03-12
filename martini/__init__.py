@@ -1,6 +1,7 @@
 from importlib.metadata import version, PackageNotFoundError
-from .example_mod import do_primes
-__all__ = ['do_primes']
+from .host_association import compute_offset_angle, compute_dlr, find_host
+
+__all__ = ['compute_offset_angle', 'compute_dlr', 'find_host']
 
 
 try:

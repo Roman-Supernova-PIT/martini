@@ -36,7 +36,7 @@ content-type = "text/x-rst"
 
 
 [project.scripts]
-package_template_example = "martini.example_mod:main"
+martini = "martini.example_mod:main"
 
 
 [project.optional-dependencies]
