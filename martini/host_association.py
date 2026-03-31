@@ -70,8 +70,6 @@ def compute_ellipse_parameters(galdf):
     gdf['cyy'] = (np.sin(gdf['theta']*conv)/gdf['a'])**2+(np.cos(gdf['theta']*conv)/gdf['b'])**2
     gdf['cxy'] = 2*np.cos(gdf['theta']*conv)*np.sin(gdf['theta']*conv)*(1/gdf['a']**2 - 1/gdf['b']**2)
 
-    gdf['phi'] = gdf['theta']*conv
-
     return gdf
 
 def prost_find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
@@ -110,6 +108,7 @@ def prost_find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     Q = gdf['cxx'] - gdf['cyy']
     kappa = Q**2 + U**2
     gdf['rab'] = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
+    gdf['phi'] = 0.5 * np.arctan2(U, Q)
 
     xr = sn_ra - gdf['ra']
     yr = sn_ra - gdf['dec']
