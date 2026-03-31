@@ -109,7 +109,7 @@ def prost_find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     U = gdf['cxy']
     Q = gdf['cxx'] - gdf['cyy']
     kappa = Q**2 + U**2
-    rab = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
+    gdf['rab'] = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
 
     xr = sn_ra - gdf['ra']
     yr = sn_ra - gdf['dec']
