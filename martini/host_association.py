@@ -72,7 +72,7 @@ def compute_ellipse_parameters(galdf):
 
     return gdf
 
-def prost_find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
+def prost_find_host_lsst(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     """
     Identify potential host galaxies for a transient using the PROST DLR method.
 
@@ -98,6 +98,59 @@ def prost_find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     potential_hosts : `~pandas.DataFrame`
         Subset of ``gdf`` with ``ddlr < ddlr_threshold``.
     """
+    
+    sn_coord = SkyCoord(sn_ra, sn_dec, unit='deg')
+    gal_coords = SkyCoord(gdf['ra'].values, gdf['dec'].values, unit='deg')
+    gdf['sep'] = sn_coord.separation(gal_coords).arcsec
+
+    U = gdf['ixy']
+    Q = gdf['ixx'] - gdf['iyy']
+    kappa = Q**2 + U**2
+    gdf['rab'] = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
+    gdf['phi'] = 0.5 * np.arctan2(U, Q)
+
+    xr = sn_ra - gdf['ra']
+    yr = sn_ra - gdf['dec']
+
+    gam = np.arctan2(xr, yr)
+    gdf['beta'] = gdf['phi'] - gam
+
+    gdf['dlr'] = gdf['a'] / np.sqrt(((gdf['rab']) * np.sin(gdf['beta'])) ** 2 + (np.cos(gdf['beta'])) ** 2)
+
+    gdf['ddlr'] = gdf['sep'] / gdf['dlr']
+
+    gdf = gdf.sort_values('ddlr').reset_index(drop=True)
+    potential_hosts = gdf[gdf['ddlr'] < ddlr_threshold].reset_index(drop=True)
+
+    return gdf, potential_hosts
+
+def prost_find_host_roman(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
+    """
+    Identify potential host galaxies for a transient using the PROST DLR method.
+
+    Uses the ellipse coefficient representation (CXX, CYY, CXY) to compute
+    the directional light radius and delta-DLR for each candidate host,
+    then returns all candidates sorted by delta-DLR and those within the
+    specified threshold.
+
+    Parameters
+    ----------
+    sn_ra : float
+    sn_dec : float
+    candidate_hosts : DataFrame of candidate host galaxies.  Must contain columns:
+        ``ra``, ``dec``, ``a``, ``b``, ``theta``.
+    ddlr_threshold : Maximum delta-DLR to consider a galaxy a potential host.  Default is 4.0,
+        following the convention of Sullivan et al. (2006).
+
+    Returns
+    -------
+    gdf : Full DataFrame with added columns ``cxx``, ``cyy``, ``cxy``, ``phi``,
+        ``sep`` (arcsec), ``beta`` (rad), ``dlr`` (arcsec), and ``ddlr``
+        (dimensionless), sorted by ``ddlr``.
+    potential_hosts : `~pandas.DataFrame`
+        Subset of ``gdf`` with ``ddlr < ddlr_threshold``.
+    """
+    
     gdf = compute_ellipse_parameters(candidate_hosts)
 
     sn_coord = SkyCoord(sn_ra, sn_dec, unit='deg')
