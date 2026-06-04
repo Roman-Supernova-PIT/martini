@@ -100,6 +100,8 @@ def prost_find_host_lsst(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     """
     
     sn_coord = SkyCoord(sn_ra, sn_dec, unit='deg')
+
+    gdf = candidate_hosts.copy()
     gal_coords = SkyCoord(gdf['ra'].values, gdf['dec'].values, unit='deg')
     gdf['sep'] = sn_coord.separation(gal_coords).arcsec
 
