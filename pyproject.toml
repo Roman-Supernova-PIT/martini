@@ -21,10 +21,13 @@ dependencies = [
   "setuptools_scm",
   "cruft",
   "coverage",
-  
-  "pandas, numpy, os, astropy, galsim",
-  
+  "pandas", 
+  "numpy", 
+  "astropy", 
+  # "galsim", # not working in docker
 ]
+
+
 license-files = ["LICENSE"]
 
 
