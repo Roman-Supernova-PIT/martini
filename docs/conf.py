@@ -134,13 +134,14 @@ html_sidebars = {
 }
 html_theme_options = {
     'fixed_sidebar': True,
-    'logo': "logo_black_filled_sm.png",
-    'logo_text_align': "left",
-    'description': "Software developed by the Roman SNPIT",
-    'sidebar_width':'250px',
-    'page_width':'75%',
-    'body_max_width':'120ex',
-    'show_relbars':True,
+    # 'logo': "logo_black_filled_sm.png",
+    "logo": "logo_black_filled.png",
+    "logo_text_align": "left",
+    "description": "Software developed by the Roman SNPIT",
+    "sidebar_width": "250px",
+    "page_width": "75%",
+    "body_max_width": "120ex",
+    "show_relbars": True,
 }
 
 
