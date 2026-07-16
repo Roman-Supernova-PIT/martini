@@ -52,6 +52,12 @@ If you would like to do an editable install:
 
     $ pip install -e .
     $ pip install -e .[docs]  # install document build packages during install
+    
+If you are using uv (we are looking at you Ben)
+
+.. code-block:: console
+
+    $ uv sync --all-extras
 
 
 .. _Github repo: https://github.com/Roman-Supernova-PIT/https://github.com/Roman-Supernova-PIT/martini
