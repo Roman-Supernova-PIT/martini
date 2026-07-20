@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ..host_association import compute_offset_angle, compute_dlr, find_host
+from ..host_association import (
+    compute_offset_angle,
+    compute_ellipse_parameters,
+    compute_dlr,
+    find_host_prost,
+    find_host,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +119,121 @@ class TestComputeDlr:
         df = pd.DataFrame({'a': r, 'b': r, 'gamma': gammas})
         result = compute_dlr(df)
         assert np.allclose(result['dlr'].values, r, rtol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# compute_ellipse_parameters tests
+# ---------------------------------------------------------------------------
+
+class TestComputeEllipseParameters:
+
+    def test_adds_expected_columns(self):
+        cat = make_catalog(theta=45.0)
+        result = compute_ellipse_parameters(cat)
+        for col in ('cxx', 'cyy', 'cxy'):
+            assert col in result.columns
+
+    def test_theta_zero_aligns_axes(self):
+        """theta = 0 → cxx = 1/a^2, cyy = 1/b^2, cxy = 0."""
+        a, b = 5.0, 3.0
+        cat = make_catalog(a=a, b=b, theta=0.0)
+        result = compute_ellipse_parameters(cat)
+        assert np.isclose(result['cxx'].values[0], 1 / a**2, rtol=1e-10)
+        assert np.isclose(result['cyy'].values[0], 1 / b**2, rtol=1e-10)
+        assert np.isclose(result['cxy'].values[0], 0.0, atol=1e-10)
+
+    def test_theta_90_swaps_axes(self):
+        """theta = 90 deg → cxx and cyy swap relative to theta = 0."""
+        a, b = 5.0, 3.0
+        cat = make_catalog(a=a, b=b, theta=90.0)
+        result = compute_ellipse_parameters(cat)
+        assert np.isclose(result['cxx'].values[0], 1 / b**2, rtol=1e-10)
+        assert np.isclose(result['cyy'].values[0], 1 / a**2, rtol=1e-10)
+        assert np.isclose(result['cxy'].values[0], 0.0, atol=1e-10)
+
+    def test_does_not_mutate_input(self):
+        cat = make_catalog(theta=45.0)
+        original_cols = set(cat.columns)
+        _ = compute_ellipse_parameters(cat)
+        assert set(cat.columns) == original_cols
+
+
+# ---------------------------------------------------------------------------
+# find_host_prost tests
+# ---------------------------------------------------------------------------
+
+class TestFindHostProst:
+
+    def test_returns_two_dataframes(self):
+        cat = make_catalog(theta=45.0)
+        result = find_host_prost(10.5, 0.1, cat)
+        assert len(result) == 2
+
+    def test_all_hosts_has_required_columns(self):
+        cat = make_catalog(theta=45.0)
+        all_hosts, _ = find_host_prost(10.5, 0.1, cat)
+        for col in ('cxx', 'cyy', 'cxy', 'sep', 'rab', 'phi', 'beta', 'dlr', 'ddlr'):
+            assert col in all_hosts.columns
+
+    def test_circular_galaxy_constant_dlr(self):
+        """For a=b (circular), DLR = a regardless of theta or transient position."""
+        r = 4.0
+        for theta in (0.0, 30.0, 90.0, 137.0):
+            cat = make_catalog(a=r, b=r, theta=theta)
+            all_hosts, _ = find_host_prost(10.3, 0.2, cat)
+            assert np.isclose(all_hosts['dlr'].values[0], r, rtol=1e-10)
+
+    def test_dlr_bounded_by_axes(self):
+        """DLR must always be between b and a (inclusive)."""
+        a, b = 6.0, 2.0
+        rng = np.random.default_rng(0)
+        cat = make_catalog(a=a, b=b, theta=0.0)
+        for _ in range(20):
+            sn_ra = 10.0 + rng.uniform(-0.01, 0.01)
+            sn_dec = 0.0 + rng.uniform(-0.01, 0.01)
+            all_hosts, _ = find_host_prost(sn_ra, sn_dec, cat)
+            dlr = all_hosts['dlr'].values[0]
+            assert b - 1e-10 <= dlr <= a + 1e-10
+
+    def test_all_hosts_sorted_by_ddlr(self):
+        cat = pd.DataFrame({
+            'ra':    [10.0,  10.5],
+            'dec':   [0.001, 0.0],
+            'a':     [5.0,   5.0],
+            'b':     [3.0,   3.0],
+            'theta': [45.0,  45.0],
+        })
+        all_hosts, _ = find_host_prost(10.0, 0.0, cat)
+        assert list(all_hosts['ddlr']) == sorted(all_hosts['ddlr'])
+
+    def test_potential_hosts_below_threshold(self):
+        cat = pd.DataFrame({
+            'ra':    [10.0,  10.5],
+            'dec':   [0.001, 0.0],
+            'a':     [5.0,   5.0],
+            'b':     [3.0,   3.0],
+            'theta': [45.0,  45.0],
+        })
+        _, potential = find_host_prost(10.0, 0.0, cat, ddlr_threshold=4.0)
+        assert (potential['ddlr'] < 4.0).all()
+
+    def test_does_not_mutate_input(self):
+        cat = make_catalog(theta=45.0)
+        original_cols = set(cat.columns)
+        _ = find_host_prost(10.5, 0.1, cat)
+        assert set(cat.columns) == original_cols
+
+    def test_custom_threshold(self):
+        cat = pd.DataFrame({
+            'ra':    [10.0, 10.0, 10.0],
+            'dec':   [0.001, 0.01, 0.1],
+            'a':     [5.0, 5.0, 5.0],
+            'b':     [3.0, 3.0, 3.0],
+            'theta': [45.0, 45.0, 45.0],
+        })
+        _, potential_tight = find_host_prost(10.0, 0.0, cat, ddlr_threshold=1.0)
+        _, potential_loose = find_host_prost(10.0, 0.0, cat, ddlr_threshold=100.0)
+        assert len(potential_tight) <= len(potential_loose)
 
 
 # ---------------------------------------------------------------------------

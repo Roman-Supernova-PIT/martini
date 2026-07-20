@@ -4,7 +4,6 @@ __all__ = ['compute_offset_angle', 'compute_dlr', 'find_host']
 
 import numpy as np
 from astropy.coordinates import SkyCoord
-import astropy.units as u
 
 
 def compute_offset_angle(sn_ra, sn_dec, candidate_hosts):
@@ -62,75 +61,54 @@ def compute_ellipse_parameters(galdf):
         * ``cxy`` -- x-y cross-term ellipse coefficient (arcsec\ :sup:`-2`)
         * ``phi`` -- position angle converted to radians
     """
-    conv = (1*u.deg).to(u.rad)
-
     gdf = galdf.copy()
 
-    gdf['cxx'] = (np.cos(gdf['theta']*conv)/gdf['a'])**2+(np.sin(gdf['theta']*conv)/gdf['b'])**2
-    gdf['cyy'] = (np.sin(gdf['theta']*conv)/gdf['a'])**2+(np.cos(gdf['theta']*conv)/gdf['b'])**2
-    gdf['cxy'] = 2*np.cos(gdf['theta']*conv)*np.sin(gdf['theta']*conv)*(1/gdf['a']**2 - 1/gdf['b']**2)
+    theta_rad = np.deg2rad(gdf['theta'])
 
+    gdf['cxx'] = (np.cos(theta_rad)**2)/gdf['a']**2 + (np.sin(theta_rad)**2)/gdf['b']**2
+    gdf['cyy'] = (np.sin(theta_rad)**2)/gdf['a']**2 + (np.cos(theta_rad)**2)/gdf['b']**2
+    gdf['cxy'] = 2*np.cos(theta_rad)*np.sin(theta_rad)*(1/gdf['a']**2 - 1/gdf['b']**2)
+    
     return gdf
 
-def prost_find_host_lsst(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
+def compute_dlr(candidate_hosts):
     """
-    Identify potential host galaxies for a transient using the PROST DLR method.
-
-    Uses the ellipse coefficient representation (CXX, CYY, CXY) to compute
-    the directional light radius and delta-DLR for each candidate host,
-    then returns all candidates sorted by delta-DLR and those within the
-    specified threshold.
+    Compute the Directional Light Radius (DLR) for each candidate host galaxy.
 
     Parameters
     ----------
-    sn_ra : float
-    sn_dec : float
-    candidate_hosts : DataFrame of candidate host galaxies.  Must contain columns:
-        ``ra``, ``dec``, ``a``, ``b``, ``theta``.
-    ddlr_threshold : Maximum delta-DLR to consider a galaxy a potential host.  Default is 4.0,
-        following the convention of Sullivan et al. (2006).
+    candidate_hosts : `~pandas.DataFrame`
+        DataFrame of candidate host galaxies.  Must contain columns:
+        * ``a``     semi-major axis in arcseconds
+        * ``b``     semi-minor axis in arcseconds
+        * ``gamma`` offset angle in radians (output of `compute_offset_angle`)
 
     Returns
     -------
-    gdf : Full DataFrame with added columns ``cxx``, ``cyy``, ``cxy``, ``phi``,
-        ``sep`` (arcsec), ``beta`` (rad), ``dlr`` (arcsec), and ``ddlr``
-        (dimensionless), sorted by ``ddlr``.
-    potential_hosts : `~pandas.DataFrame`
-        Subset of ``gdf`` with ``ddlr < ddlr_threshold``.
+    result : `~pandas.DataFrame`
+        Copy of ``candidate_hosts`` with a new ``dlr`` column (arcseconds).
+
+
+    References
+    ----------
+    Sullivan et al. (2006), ApJ, 648, 868.
+    Gupta et al. (2016), AJ, 152, 154.
     """
-    
-    sn_coord = SkyCoord(sn_ra, sn_dec, unit='deg')
+    a = candidate_hosts['a'].values
+    b = candidate_hosts['b'].values
+    gamma = candidate_hosts['gamma'].values
 
-    gdf = candidate_hosts.copy()
-    gal_coords = SkyCoord(gdf['ra'].values, gdf['dec'].values, unit='deg')
-    gdf['sep'] = sn_coord.separation(gal_coords).arcsec
+    dlr = (a * b) / np.sqrt((a * np.sin(gamma)) ** 2 + (b * np.cos(gamma)) ** 2)
 
-    U = gdf['ixy']
-    Q = gdf['ixx'] - gdf['iyy']
-    kappa = Q**2 + U**2
-    gdf['rab'] = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
-    gdf['phi'] = 0.5 * np.arctan2(U, Q)
+    result = candidate_hosts.copy()
+    result['dlr'] = dlr
+    return result
 
-    xr = sn_ra - gdf['ra']
-    yr = sn_ra - gdf['dec']
-
-    gam = np.arctan2(xr, yr)
-    gdf['beta'] = gdf['phi'] - gam
-
-    gdf['dlr'] = gdf['a'] / np.sqrt(((gdf['rab']) * np.sin(gdf['beta'])) ** 2 + (np.cos(gdf['beta'])) ** 2)
-
-    gdf['ddlr'] = gdf['sep'] / gdf['dlr']
-
-    gdf = gdf.sort_values('ddlr').reset_index(drop=True)
-    potential_hosts = gdf[gdf['ddlr'] < ddlr_threshold].reset_index(drop=True)
-
-    return gdf, potential_hosts
-
-def prost_find_host_roman(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
+def find_host_prost(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     """
     Identify potential host galaxies for a transient using the PROST DLR method.
 
-    Uses the ellipse coefficient representation (CXX, CYY, CXY) to compute
+    Uses the second moments (ixx, iyy, ixy) to compute
     the directional light radius and delta-DLR for each candidate host,
     then returns all candidates sorted by delta-DLR and those within the
     specified threshold.
@@ -166,7 +144,7 @@ def prost_find_host_roman(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     gdf['phi'] = 0.5 * np.arctan2(U, Q)
 
     xr = sn_ra - gdf['ra']
-    yr = sn_ra - gdf['dec']
+    yr = sn_dec - gdf['dec']
 
     gam = np.arctan2(xr, yr)
     gdf['beta'] = gdf['phi'] - gam
@@ -180,43 +158,9 @@ def prost_find_host_roman(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
 
     return gdf, potential_hosts
 
-def compute_dlr(candidate_hosts):
-    """
-    Compute the Directional Light Radius (DLR) for each candidate host galaxy.
-
-    Parameters
-    ----------
-    candidate_hosts : `~pandas.DataFrame`
-        DataFrame of candidate host galaxies.  Must contain columns:
-        * ``a``     semi-major axis in arcseconds
-        * ``b``     semi-minor axis in arcseconds
-        * ``gamma`` offset angle in radians (output of `compute_offset_angle`)
-
-    Returns
-    -------
-    result : `~pandas.DataFrame`
-        Copy of ``candidate_hosts`` with a new ``dlr`` column (arcseconds).
-
-
-    References
-    ----------
-    Sullivan et al. (2006), ApJ, 648, 868.
-    Gupta et al. (2016), AJ, 152, 154.
-    """
-    a = candidate_hosts['a'].values
-    b = candidate_hosts['b'].values
-    gamma = candidate_hosts['gamma'].values
-
-    dlr = (a * b) / np.sqrt((a * np.sin(gamma)) ** 2 + (b * np.cos(gamma)) ** 2)
-
-    result = candidate_hosts.copy()
-    result['dlr'] = dlr
-    return result
-
-
 def find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     """
-    Identify potential host galaxies matchs for a transient using the DLR method.
+    Identify potential host galaxies for a transient using the DLR method.
 
     Parameters
     ----------
@@ -239,6 +183,7 @@ def find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     potential_hosts : `~pandas.DataFrame`
         Subset of ``all_hosts`` with ``ddlr < ddlr_threshold``.
     """
+    
     gdf = compute_offset_angle(sn_ra, sn_dec, candidate_hosts)
     gdf = compute_dlr(gdf)
 
