@@ -137,8 +137,8 @@ def find_host_prost(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
     gal_coords = SkyCoord(gdf['ra'].values, gdf['dec'].values, unit='deg')
     gdf['sep'] = sn_coord.separation(gal_coords).arcsec
 
-    U = gdf['cxy']
-    Q = gdf['cxx'] - gdf['cyy']
+    U = -0.5 * gdf['cxy']
+    Q = gdf['cyy'] - gdf['cxx']
     kappa = Q**2 + U**2
     gdf['rab'] = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
     gdf['phi'] = 0.5 * np.arctan2(U, Q)
