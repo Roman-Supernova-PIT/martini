@@ -28,7 +28,7 @@ cruft \
 coverage
 # galsim
 
-RUN pip install /home 
+RUN pip install -e /home/
 
 # SHELL ["/bin/bash", "--login", "-c"]
 # ENTRYPOINT /bin/bash
