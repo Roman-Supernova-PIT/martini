@@ -1,0 +1,1 @@
+Add the ``martini-run`` command to find hosts for a catalog of transients, with AWS Batch support. The container image now runs ``martini-run`` by default.
