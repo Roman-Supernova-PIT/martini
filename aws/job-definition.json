@@ -1,0 +1,18 @@
+{
+  "jobDefinitionName": "martini",
+  "type": "container",
+  "platformCapabilities": ["FARGATE"],
+  "containerProperties": {
+    "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/snpit-dev/martini:v0.2",
+    "jobRoleArn": "arn:aws:iam::ACCOUNT_ID:role/martini-batch-job-role",
+    "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "1"},
+      {"type": "MEMORY", "value": "2048"}
+    ],
+    "fargatePlatformConfiguration": {"platformVersion": "LATEST"},
+    "networkConfiguration": {"assignPublicIp": "ENABLED"}
+  },
+  "retryStrategy": {"attempts": 1},
+  "timeout": {"attemptDurationSeconds": 900}
+}
