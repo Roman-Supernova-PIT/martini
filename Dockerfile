@@ -1,34 +1,19 @@
 # # Running
-# docker build -t stirred-not-shaken .
-# docker run stirred-not-shaken martini -h
+# docker build --build-arg SETUPTOOLS_SCM_PRETEND_VERSION=0.1.0 -t martini .
+# docker run martini --help
 
-FROM python:3.14-slim-trixie
+FROM python:3.12-slim
 
 # metadata
 LABEL org.opencontainers.image.authors="Benjamin Rose <Ben_Rose@baylor.edu>"
-# LABEL org.opencontainers.image.description="My default science/astro container using Python 3.14."
+
+# .dockerignore excludes .git, so setuptools_scm can't read the version from it.
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0
 
 WORKDIR /home
 
-RUN apt update
-RUN apt install -y vim
-
 COPY . .
 
-RUN pip install --upgrade pip
+RUN pip install --no-cache-dir ".[aws]"
 
-RUN pip install asdf \
-astropy \
-numpy \
-pandas \
-# "required" dependancies that are likely not required
-towncrier \
-setuptools_scm \
-cruft \
-coverage
-# galsim
-
-RUN pip install -e /home/
-
-# SHELL ["/bin/bash", "--login", "-c"]
-# ENTRYPOINT /bin/bash
+ENTRYPOINT ["martini-run"]

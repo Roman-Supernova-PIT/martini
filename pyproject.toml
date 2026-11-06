@@ -17,13 +17,11 @@ classifiers = [
   "Programming Language :: Python"
 ]
 dependencies = [
-  "towncrier",
-  "setuptools_scm",
-  "cruft",
-  "coverage",
   "pandas", 
   "numpy", 
   "astropy", 
+  "scipy",
+  "pyarrow",
   # "galsim", # not working in docker
 ]
 
@@ -40,9 +38,13 @@ content-type = "text/x-rst"
 
 [project.scripts]
 martini = "martini.example_mod:main"
+martini-run = "martini.run:main"
 
 
 [project.optional-dependencies]
+aws = [
+  "s3fs",
+]
 test = [
     "pytest",
     "pytest-doctestplus",
@@ -61,7 +63,11 @@ docs = [
 ]
 dev = [
   "ruff", 
-  "pre-commit"
+  "pre-commit",
+  "towncrier",
+  "setuptools_scm",
+  "cruft",
+  "coverage"
 ]
 
 
