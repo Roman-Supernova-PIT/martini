@@ -10,9 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from .host_association import find_host, find_host_prost
-
-METHODS = {'prost': find_host_prost, 'dlr': find_host}
+from .host_association import compute_ddlr
 
 
 def _unit_vectors(ra, dec):
@@ -21,7 +19,19 @@ def _unit_vectors(ra, dec):
     return np.column_stack([np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec)])
 
 
-def associate(transients, galaxies, method='prost', ddlr_threshold=4.0, radius=60.0, top_n=5):
+def _nullable_dtype(dtype):
+    """Return a dtype that can hold nulls, for galaxy columns on hostless rows."""
+    if pd.api.types.is_bool_dtype(dtype):
+        return 'boolean'
+    if pd.api.types.is_integer_dtype(dtype):
+        return 'Int64'
+    if pd.api.types.is_object_dtype(dtype):
+        return 'string'
+    return dtype
+
+
+def associate(transients, galaxies, pixel_scale, method='apa', ge_axis_ratio='ghost', ddlr_threshold=4.0,
+              radius=60.0, top_n=5):
     """Find the top host candidates for each transient.
 
     Parameters
@@ -29,9 +39,15 @@ def associate(transients, galaxies, method='prost', ddlr_threshold=4.0, radius=6
     transients : `~pandas.DataFrame`
         Must contain ``ra`` and ``dec`` in degrees.
     galaxies : `~pandas.DataFrame`
-        Must contain ``ra``, ``dec``, ``a``, ``b``, and ``theta``.
-    method : {'prost', 'dlr'}
-        Host association method.
+        Must contain ``ra`` and ``dec`` in degrees and ``a`` in pixels.  ``method='apa'``
+        also needs ``b`` in pixels and ``theta`` in degrees (image frame), and
+        ``method='ge'`` needs ``cxx``, ``cyy``, and ``cxy``.
+    pixel_scale : float
+        Arcseconds per pixel.
+    method : {'apa', 'ge'}
+        Host association method, passed to `~martini.host_association.compute_ddlr`.
+    ge_axis_ratio : {'ghost', 'exact'}
+        Axis-ratio convention for ``method='ge'``.
     ddlr_threshold : float
         Maximum delta-DLR for a galaxy to be a potential host.
     radius : float
@@ -47,8 +63,9 @@ def associate(transients, galaxies, method='prost', ddlr_threshold=4.0, radius=6
         ``transient_index`` is the index label of the row in ``transients``.
         ``ddlr_rank`` starts at 1.  A transient with no potential host gets one row with
         null galaxy columns and a null ``ddlr_rank``, so that every input is accounted for.
+        Columns and dtypes don't depend on which hosts were found, so parts from different
+        shards can be read back as one dataset.
     """
-    find = METHODS[method]
     galaxies = galaxies.reset_index(drop=True)
     tree = cKDTree(_unit_vectors(galaxies['ra'].values, galaxies['dec'].values))
     # Query by chord length, the straight-line distance between points on the unit sphere.
@@ -60,8 +77,9 @@ def associate(transients, galaxies, method='prost', ddlr_threshold=4.0, radius=6
     for i, (index, row) in enumerate(prefixed.iterrows()):
         found = pd.DataFrame()
         if neighbors[i]:
-            _, potential = find(row['transient_ra'], row['transient_dec'], galaxies.iloc[neighbors[i]],
-                                ddlr_threshold=ddlr_threshold)
+            potential = compute_ddlr(row['transient_ra'], row['transient_dec'], galaxies.iloc[neighbors[i]],
+                                     method=method, pixel_scale=pixel_scale, ge_axis_ratio=ge_axis_ratio,
+                                     ddlr_threshold=ddlr_threshold)
             found = potential.head(top_n).copy()
         if found.empty:
             found = pd.DataFrame(index=[0])
@@ -73,14 +91,14 @@ def associate(transients, galaxies, method='prost', ddlr_threshold=4.0, radius=6
             found[column] = value
         frames.append(found)
 
-    if not frames:
-        return pd.DataFrame(columns=['transient_index', *prefixed.columns, 'ddlr_rank'])
+    dtypes = {'transient_index': transients.index.dtype, **prefixed.dtypes.to_dict(), 'ddlr_rank': 'Int64',
+              **{column: _nullable_dtype(dtype) for column, dtype in galaxies.dtypes.items()},
+              'sep': 'float64', 'dlr': 'float64', 'ddlr': 'float64'}
     with warnings.catch_warnings():
         # Null rows for transients without a host have no galaxy columns, which is intended.
         warnings.simplefilter('ignore', FutureWarning)
-        result = pd.concat(frames, ignore_index=True)
-    result['ddlr_rank'] = result['ddlr_rank'].astype('Int64')
-    return result
+        result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return result.reindex(columns=list(dtypes)).astype(dtypes)
 
 
 def shard_output_path(out, shard_index, n_shards):
@@ -103,12 +121,16 @@ def _parser():
     parser = argparse.ArgumentParser(description='Associate transients with host galaxies in batch.')
     parser.add_argument('--transients', required=True, help='Parquet path or s3:// URL with ra and dec columns.')
     parser.add_argument('--galaxies', required=True,
-                        help='Parquet path or s3:// URL with ra, dec, a, b, and theta columns.')
+                        help='Parquet path or s3:// URL.  Needs ra, dec, and a, plus b and theta for --method apa, '
+                             'or cxx, cyy, and cxy for --method ge.')
     parser.add_argument('--out', required=True, help='Output parquet path or s3:// URL.')
     parser.add_argument('--shard-index', type=int, default=None,
                         help='Shard to process.  Defaults to $AWS_BATCH_JOB_ARRAY_INDEX, then 0.')
     parser.add_argument('--n-shards', type=int, default=1, help='Total number of shards.')
-    parser.add_argument('--method', choices=sorted(METHODS), default='prost', help='Host association method.')
+    parser.add_argument('--pixel-scale', type=float, required=True, help='Arcseconds per pixel of a and b.')
+    parser.add_argument('--method', choices=['apa', 'ge'], default='apa', help='Host association method.')
+    parser.add_argument('--ge-axis-ratio', choices=['ghost', 'exact'], default='ghost',
+                        help='Axis-ratio convention for --method ge.')
     parser.add_argument('--ddlr', type=float, default=4.0, help='Maximum delta-DLR for a potential host.')
     parser.add_argument('--radius', type=float, default=60.0, help='Cone-search radius in arcseconds.')
     parser.add_argument('--top-n', type=int, default=5, help='Maximum number of hosts to keep per transient.')
@@ -128,8 +150,8 @@ def main(args=None):
     transients = pd.read_parquet(res.transients).iloc[shard_index::res.n_shards]
     galaxies = pd.read_parquet(res.galaxies)
 
-    result = associate(transients, galaxies, method=res.method, ddlr_threshold=res.ddlr,
-                       radius=res.radius, top_n=res.top_n)
+    result = associate(transients, galaxies, res.pixel_scale, method=res.method, ge_axis_ratio=res.ge_axis_ratio,
+                       ddlr_threshold=res.ddlr, radius=res.radius, top_n=res.top_n)
 
     out = shard_output_path(res.out, shard_index, res.n_shards)
     if '://' not in out:
