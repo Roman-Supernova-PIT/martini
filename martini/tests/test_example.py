@@ -1,16 +1,11 @@
-"""Smoke tests: verify top-level package exports are importable and callable."""
+"""Smoke tests: verify top-level package exports are importable."""
 
 
-def test_compute_offset_angle_importable():
-    from .. import compute_offset_angle
-    assert callable(compute_offset_angle)
+def test_compute_ddlr_importable():
+    from .. import compute_ddlr
+    assert callable(compute_ddlr)
 
 
-def test_compute_dlr_importable():
-    from .. import compute_dlr
-    assert callable(compute_dlr)
-
-
-def test_find_host_importable():
-    from .. import find_host
-    assert callable(find_host)
+def test_roman_pixel_scale_importable():
+    from .. import ROMAN_PIXEL_SCALE
+    assert ROMAN_PIXEL_SCALE > 0

@@ -1,7 +1,7 @@
 from importlib.metadata import version, PackageNotFoundError
-from .host_association import compute_offset_angle, compute_dlr, find_host
+from .host_association import compute_ddlr, ROMAN_PIXEL_SCALE
 
-__all__ = ['compute_offset_angle', 'compute_dlr', 'find_host']
+__all__ = ['compute_ddlr', 'ROMAN_PIXEL_SCALE']
 
 
 try:

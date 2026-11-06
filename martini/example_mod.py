@@ -1,6 +1,6 @@
 """Command-line interface for martini host association tools."""
 
-from .host_association import compute_dlr, find_host  # noqa: F401
+from .host_association import compute_ddlr  # noqa: F401
 
 __all__ = ['main']
 
@@ -18,4 +18,4 @@ def main(args=None):
     res = parser.parse_args(args)
 
     print(f'Transient position: RA={res.transient_ra:.6f} deg, Dec={res.transient_dec:.6f} deg')
-    print('Provide a galaxy catalog to find_host() to identify the most likely host.')
+    print('Provide a galaxy catalog to compute_ddlr() to identify the most likely host.')
