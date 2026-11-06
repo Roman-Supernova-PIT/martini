@@ -3,7 +3,7 @@
   "type": "container",
   "platformCapabilities": ["FARGATE"],
   "containerProperties": {
-    "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/snpit-dev/martini:v0.2",
+    "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/snpit-dev/martini:v0.3",
     "jobRoleArn": "arn:aws:iam::ACCOUNT_ID:role/martini-batch-job-role",
     "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
     "resourceRequirements": [
