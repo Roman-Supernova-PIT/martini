@@ -1,198 +1,110 @@
-"""Transient host association using the Directional Light Radius (DLR) method."""
+"""Transient host association using the Directional Light Radius (DLR) method.
 
-__all__ = ['compute_offset_angle', 'compute_dlr', 'find_host']
+Candidate catalog columns
+-------------------------
+All methods require:
+
+* ``ra``, ``dec`` -- galaxy centroid in degrees
+* ``a``           -- semi-major axis in pixels (converted with ``pixel_scale``)
+
+``method="apa"`` additionally requires:
+
+* ``b``     -- semi-minor axis in pixels
+* ``theta`` -- major-axis position angle in degrees, image frame
+  (``theta = 90`` points the major axis North)
+
+``method="ge"`` additionally requires the ellipse coefficients
+``cxx``, ``cyy``, ``cxy`` (SExtractor convention).
+
+GE axis-ratio conventions
+-------------------------
+For the GE method the ellipticity ``e = sqrt(Q**2 + U**2)`` is derived from the
+ellipse coefficients, with ``e = (a**2 - b**2) / (a**2 + b**2)``.
+
+* ``"exact"`` -- ``a/b = sqrt((1 + e) / (1 - e))``, the true axis ratio.
+* ``"ghost"`` -- ``a/b = (1 + e) / (1 - e)``, the convention used by GHOST,
+  which equals the square of the true axis ratio.
+
+References
+----------
+Sullivan et al. (2006), ApJ, 648, 868.
+Gupta et al. (2016), AJ, 152, 154.
+"""
+
+__all__ = ['compute_ddlr', 'ROMAN_PIXEL_SCALE']
 
 import numpy as np
 from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+ROMAN_PIXEL_SCALE = 1
 
 
-def compute_offset_angle(sn_ra, sn_dec, candidate_hosts):
-    """
-    Compute the offset angle (gamma) between the transient and each candidate host.
-
-    Gamma is the angle between the galaxy's major axis and the direction from the
-    galaxy center to the transient, measured in radians.
-
-    Parameters
-    ----------
-    sn_ra : float
-    sn_dec : float
-    candidate_hosts : `~pandas.DataFrame`
-        DataFrame of candidate host galaxies.  Must contain columns:
-        * ``ra``    galaxy RA in degrees
-        * ``dec``   galaxy Dec in degrees
-        * ``theta`` position angle in degrees
-
-    Returns
-    -------
-    result : `~pandas.DataFrame`
-        Copy of ``candidate_hosts`` with a new ``gamma`` column (radians).
-    """
-    xr = np.abs(sn_ra - candidate_hosts['ra'].values)
-    yr = np.abs(sn_dec - candidate_hosts['dec'].values)
-
-    phi = np.deg2rad(candidate_hosts['theta'].values)
-
-    result = candidate_hosts.copy()
-    result['gamma'] = phi - np.arctan(yr / xr)
-    return result
-
-def compute_ellipse_parameters(galdf):
-    """
-    Compute ellipse shape parameters (CXX, CYY, CXY) for each candidate host galaxy.
-
-    Converts galaxy morphology into the standard ellipse coefficient representation
-    used by the PROST host-association method.
+def compute_ddlr(sn_ra, sn_dec, cat, method="apa",
+                 pixel_scale=ROMAN_PIXEL_SCALE, ge_axis_ratio="ghost",
+                 ddlr_threshold=None):
+    """Compute d_DLR for every candidate galaxy and sort by it.
 
     Parameters
     ----------
-    galdf : `~pandas.DataFrame`
-        DataFrame of candidate host galaxies.  Must contain columns:
-        * ``a``     semi-major axis in arcseconds
-        * ``b``     semi-minor axis in arcseconds
-        * ``theta`` position angle in degrees (east of north)
-
-    Returns
-    -------
-    gdf : `~pandas.DataFrame`
-        Copy of ``galdf`` with four new columns:
-        * ``cxx`` -- x-x ellipse coefficient (arcsec\ :sup:`-2`)
-        * ``cyy`` -- y-y ellipse coefficient (arcsec\ :sup:`-2`)
-        * ``cxy`` -- x-y cross-term ellipse coefficient (arcsec\ :sup:`-2`)
-        * ``phi`` -- position angle converted to radians
-    """
-    gdf = galdf.copy()
-
-    theta_rad = np.deg2rad(gdf['theta'])
-
-    gdf['cxx'] = (np.cos(theta_rad)**2)/gdf['a']**2 + (np.sin(theta_rad)**2)/gdf['b']**2
-    gdf['cyy'] = (np.sin(theta_rad)**2)/gdf['a']**2 + (np.cos(theta_rad)**2)/gdf['b']**2
-    gdf['cxy'] = 2*np.cos(theta_rad)*np.sin(theta_rad)*(1/gdf['a']**2 - 1/gdf['b']**2)
-    
-    return gdf
-
-def compute_dlr(candidate_hosts):
-    """
-    Compute the Directional Light Radius (DLR) for each candidate host galaxy.
-
-    Parameters
-    ----------
-    candidate_hosts : `~pandas.DataFrame`
-        DataFrame of candidate host galaxies.  Must contain columns:
-        * ``a``     semi-major axis in arcseconds
-        * ``b``     semi-minor axis in arcseconds
-        * ``gamma`` offset angle in radians (output of `compute_offset_angle`)
-
-    Returns
-    -------
-    result : `~pandas.DataFrame`
-        Copy of ``candidate_hosts`` with a new ``dlr`` column (arcseconds).
-
-
-    References
-    ----------
-    Sullivan et al. (2006), ApJ, 648, 868.
-    Gupta et al. (2016), AJ, 152, 154.
-    """
-    a = candidate_hosts['a'].values
-    b = candidate_hosts['b'].values
-    gamma = candidate_hosts['gamma'].values
-
-    dlr = (a * b) / np.sqrt((a * np.sin(gamma)) ** 2 + (b * np.cos(gamma)) ** 2)
-
-    result = candidate_hosts.copy()
-    result['dlr'] = dlr
-    return result
-
-def find_host_prost(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
-    """
-    Identify potential host galaxies for a transient using the PROST DLR method.
-
-    Uses the second moments (ixx, iyy, ixy) to compute
-    the directional light radius and delta-DLR for each candidate host,
-    then returns all candidates sorted by delta-DLR and those within the
-    specified threshold.
-
-    Parameters
-    ----------
-    sn_ra : float
-    sn_dec : float
-    candidate_hosts : DataFrame of candidate host galaxies.  Must contain columns:
-        ``ra``, ``dec``, ``a``, ``b``, ``theta``.
-    ddlr_threshold : Maximum delta-DLR to consider a galaxy a potential host.  Default is 4.0,
-        following the convention of Sullivan et al. (2006).
-
-    Returns
-    -------
-    gdf : Full DataFrame with added columns ``cxx``, ``cyy``, ``cxy``, ``phi``,
-        ``sep`` (arcsec), ``beta`` (rad), ``dlr`` (arcsec), and ``ddlr``
-        (dimensionless), sorted by ``ddlr``.
-    potential_hosts : `~pandas.DataFrame`
-        Subset of ``gdf`` with ``ddlr < ddlr_threshold``.
-    """
-    
-    gdf = compute_ellipse_parameters(candidate_hosts)
-
-    sn_coord = SkyCoord(sn_ra, sn_dec, unit='deg')
-    gal_coords = SkyCoord(gdf['ra'].values, gdf['dec'].values, unit='deg')
-    gdf['sep'] = sn_coord.separation(gal_coords).arcsec
-
-    U = -0.5 * gdf['cxy']
-    Q = gdf['cyy'] - gdf['cxx']
-    kappa = Q**2 + U**2
-    gdf['rab'] = (1 + np.sqrt(kappa))/(1-np.sqrt(kappa))
-    gdf['phi'] = 0.5 * np.arctan2(U, Q)
-
-    xr = sn_ra - gdf['ra']
-    yr = sn_dec - gdf['dec']
-
-    gam = np.arctan2(xr, yr)
-    gdf['beta'] = gdf['phi'] - gam
-
-    gdf['dlr'] = gdf['a'] / np.sqrt(((gdf['rab']) * np.sin(gdf['beta'])) ** 2 + (np.cos(gdf['beta'])) ** 2)
-
-    gdf['ddlr'] = gdf['sep'] / gdf['dlr']
-
-    gdf = gdf.sort_values('ddlr').reset_index(drop=True)
-    potential_hosts = gdf[gdf['ddlr'] < ddlr_threshold].reset_index(drop=True)
-
-    return gdf, potential_hosts
-
-def find_host(sn_ra, sn_dec, candidate_hosts, ddlr_threshold=4.0):
-    """
-    Identify potential host galaxies for a transient using the DLR method.
-
-    Parameters
-    ----------
-    sn_ra : float
-        RA of the transient in degrees.
-    sn_dec : float
-        Dec of the transient in degrees.
-    candidate_hosts : `~pandas.DataFrame`
-        DataFrame of candidate host galaxies.  Must contain columns:
-        ``ra``, ``dec``, ``a``, ``b``, ``theta``.
+    sn_ra, sn_dec : float
+        SN coordinates in degrees.
+    cat : pandas.DataFrame
+        Candidate galaxies with the columns listed above.
+    method : {"apa", "ge"}
+        "apa" uses a, b, theta.  "ge" uses the ellipse coefficients.
+    pixel_scale : float
+        Arcsec per pixel.
+    ge_axis_ratio : {"ghost", "exact"}
+        Axis-ratio convention for the GE method (see module docstring).
     ddlr_threshold : float, optional
-        Maximum delta_DLR to consider a galaxy a potential host.  Default is 4.0,
-        following the convention of Sullivan et al. (2006).
+        If given, drop candidates with ``ddlr >= ddlr_threshold``.  A value of
+        4.0 follows Sullivan et al. (2006).  Default ``None`` keeps all
+        candidates.
 
     Returns
     -------
-    all_hosts : `~pandas.DataFrame`
-        Full DataFrame with added columns ``gamma`` (rad), ``dlr`` (arcsec),
-        ``sep`` (arcsec), and ``ddlr`` (dimensionless), sorted by ``ddlr``.
-    potential_hosts : `~pandas.DataFrame`
-        Subset of ``all_hosts`` with ``ddlr < ddlr_threshold``.
+    pandas.DataFrame
+        Copy of ``cat`` with ``sep`` (arcsec), ``dlr`` (arcsec) and ``ddlr``,
+        sorted so the first row is the preferred host.  May be empty if
+        ``ddlr_threshold`` excludes every candidate.
     """
-    
-    gdf = compute_offset_angle(sn_ra, sn_dec, candidate_hosts)
-    gdf = compute_dlr(gdf)
+    df = cat.copy()
 
-    sn_coord = SkyCoord(sn_ra, sn_dec, unit='deg')
-    gal_coords = SkyCoord(gdf['ra'].values, gdf['dec'].values, unit='deg')
-    gdf['sep'] = sn_coord.separation(gal_coords).arcsec
-    gdf['ddlr'] = gdf['sep'] / gdf['dlr']
+    if method == "apa":
+        phi_image = df["theta"].values
+        a_over_b = df["a"].values / df["b"].values
+    elif method == "ge":
+        cxx, cyy, cxy = df["cxx"].values, df["cyy"].values, df["cxy"].values
+        Q = (cyy - cxx) / (cxx + cyy)
+        U = -cxy / (cxx + cyy)
+        phi_image = np.degrees(0.5 * np.arctan2(U, Q))
+        e = np.clip(np.hypot(Q, U), 0, 1 - 1e-12)
+        if ge_axis_ratio == "ghost":
+            a_over_b = (1 + e) / (1 - e)
+        elif ge_axis_ratio == "exact":
+            a_over_b = np.sqrt((1 + e) / (1 - e))
+        else:
+            raise ValueError("ge_axis_ratio must be 'ghost' or 'exact'")
+    else:
+        raise ValueError("method must be 'apa' or 'ge'")
 
-    gdf = gdf.sort_values('ddlr').reset_index(drop=True)
-    potential_hosts = gdf[gdf['ddlr'] < ddlr_threshold].reset_index(drop=True)
+    # Major axis as a sky position angle (east of north)
+    phi = np.radians(phi_image - 90.0)
 
-    return gdf, potential_hosts
+    # Separation and bearing from each galaxy to the SN (handles cos(dec) and quadrants)
+    sn = SkyCoord(sn_ra, sn_dec, unit="deg")
+    gal = SkyCoord(df["ra"].values, df["dec"].values, unit="deg")
+    df["sep"] = gal.separation(sn).to_value(u.arcsec)
+    psi = gal.position_angle(sn).to_value(u.rad)
+
+    # DLR along the SN direction (Sullivan et al. 2006)
+    eta = phi - psi
+    a = df["a"].values * pixel_scale
+    df["dlr"] = a / np.sqrt((a_over_b * np.sin(eta)) ** 2 + np.cos(eta) ** 2)
+    df["ddlr"] = df["sep"] / df["dlr"]
+
+    if ddlr_threshold is not None:
+        df = df[df["ddlr"] < ddlr_threshold]
+
+    return df.sort_values("ddlr").reset_index(drop=True)

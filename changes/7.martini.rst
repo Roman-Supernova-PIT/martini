@@ -1,0 +1,1 @@
+Replace ``find_host``, ``find_host_prost``, ``compute_dlr``, ``compute_offset_angle`` and ``compute_ellipse_parameters`` with a single ``compute_ddlr`` function supporting the APA and GE (ellipse-coefficient) methods, using proper sky position angles for the SN direction, and an optional ``ddlr_threshold`` cut.
