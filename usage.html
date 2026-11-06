@@ -5,12 +5,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Usage &#8212; martini 0.0.1.dev1+g08d13d63a.d20260813 documentation</title>
+    <title>Usage &#8212; martini 0.0.1.dev1+g8cf3a318c.d20261106 documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=5a6b8c39" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=f3bc516d" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
-    <script src="_static/documentation_options.js?v=b6e38efe"></script>
+    <script src="_static/documentation_options.js?v=422ae842"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="genindex.html" />
@@ -109,6 +109,35 @@
 </pre></div>
 </div>
 </section>
+<section id="host-association">
+<h2>Host association<a class="headerlink" href="#host-association" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">compute_ddlr</span></code> computes the directional light radius (DLR) and the normalized
+separation d_DLR for every candidate galaxy, and returns the catalog sorted so
+the first row is the preferred host:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">martini</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_ddlr</span>
+
+<span class="n">cat</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">'ra'</span><span class="p">:</span>    <span class="p">[</span><span class="mf">10.0005</span><span class="p">,</span> <span class="mf">10.01</span><span class="p">],</span>
+    <span class="s1">'dec'</span><span class="p">:</span>   <span class="p">[</span><span class="mf">0.0002</span><span class="p">,</span>  <span class="mf">0.0</span><span class="p">],</span>
+    <span class="s1">'a'</span><span class="p">:</span>     <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span>     <span class="mf">8.0</span><span class="p">],</span>    <span class="c1"># pixels</span>
+    <span class="s1">'b'</span><span class="p">:</span>     <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span>     <span class="mf">4.0</span><span class="p">],</span>    <span class="c1"># pixels</span>
+    <span class="s1">'theta'</span><span class="p">:</span> <span class="p">[</span><span class="mf">45.0</span><span class="p">,</span>    <span class="mf">120.0</span><span class="p">],</span>  <span class="c1"># degrees</span>
+<span class="p">})</span>
+
+<span class="n">ranked</span> <span class="o">=</span> <span class="n">compute_ddlr</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">cat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">'apa'</span><span class="p">,</span> <span class="n">pixel_scale</span><span class="o">=</span><span class="mf">0.11</span><span class="p">)</span>
+<span class="n">host</span> <span class="o">=</span> <span class="n">ranked</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">ddlr_threshold</span></code> to drop candidates with <code class="docutils literal notranslate"><span class="pre">ddlr</span></code> at or above a cut
+(4.0 follows Sullivan et al. 2006):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">potential_hosts</span> <span class="o">=</span> <span class="n">compute_ddlr</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">cat</span><span class="p">,</span> <span class="n">ddlr_threshold</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">method='ge'</span></code> to work from SExtractor-style ellipse coefficients
+(<code class="docutils literal notranslate"><span class="pre">cxx</span></code>, <code class="docutils literal notranslate"><span class="pre">cyy</span></code>, <code class="docutils literal notranslate"><span class="pre">cxy</span></code>) instead of <code class="docutils literal notranslate"><span class="pre">b</span></code> and <code class="docutils literal notranslate"><span class="pre">theta</span></code>; <code class="docutils literal notranslate"><span class="pre">ge_axis_ratio</span></code>
+selects the <code class="docutils literal notranslate"><span class="pre">'ghost'</span></code> or <code class="docutils literal notranslate"><span class="pre">'exact'</span></code> axis-ratio convention.</p>
+</section>
 </section>
 
 
@@ -137,7 +166,7 @@
       &#169;2026, Roman Supernova PIT.
       
       |
-      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.1</a>
       &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
       
       |
